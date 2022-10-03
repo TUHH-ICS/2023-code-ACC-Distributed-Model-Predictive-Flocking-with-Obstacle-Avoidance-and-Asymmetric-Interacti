@@ -1,5 +1,7 @@
 # 2023-code-ACC-Distributed Model Predictive Flocking with Obstacle Avoidance and Asymmetric Interaction Forces
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7139904.svg)](https://doi.org/10.5281/zenodo.7139904)
+
 ## General
 
 This repository contains an implementation of the algorithms and simulations described in 
