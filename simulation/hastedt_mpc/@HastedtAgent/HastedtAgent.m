@@ -12,9 +12,10 @@ classdef HastedtAgent < DoubleIntegratorAgent
     properties
         d;              % equilibrium distance(or desired distance) to neighbours
         do;             % equilibrium distance(or desired distance) to obstacles
-        lambda;         % weight on control action
-        lambda_o;       % weight on obstacle avoidance
-        lambda_a;       % weight on positive deviation form desired distance
+        lambda_u;       % weight on control action
+        lambda_beta;    % weight on obstacle avoidance
+        lambda_a_plus;  % weight on positive deviation form desired distance
+        lambda_a_minus; % weight on positive deviation form desired distance
         lookAhead;      % look ahead distance for reference
         q_pos;          % reference position weighting factor
         q_vel;          % reference velocity weighting factor
@@ -22,7 +23,7 @@ classdef HastedtAgent < DoubleIntegratorAgent
         m;              % state dimensions
         u_max;          % maximum input
         obstacles;      % obstacle matrix
-        reference;      % reference 
+        reference;      % reference
         ro;             % obstacle interaction range
     end
     
@@ -31,7 +32,6 @@ classdef HastedtAgent < DoubleIntegratorAgent
         num_N;          % number of neighbors
         num_O;          % number of obstacles
         neighbors;      % index of neighbors
-        U_opt;          % optimal control input     
     end
     
     % member variables
@@ -48,14 +48,13 @@ classdef HastedtAgent < DoubleIntegratorAgent
         Tf = transformationMatrix(obj, dimension, size);
         h = calculateH(obj, xi, size, desiredDistance);
         J = constructJacobian(obj, x0, h0, size, desiredDistance);
-        fillUopt(obj,U,messages);
     end
     
     methods(Static)
         function e_nm = e_nm(n,m)
             e_nm = zeros(1,n);
             e_nm(m) = 1;
-        end     
+        end
     end
     
     methods
@@ -73,15 +72,16 @@ classdef HastedtAgent < DoubleIntegratorAgent
             % load data from config file
             obj.d = cfg.d;
             obj.do = cfg.do;
-            obj.lambda = cfg.lambda;
-            obj.lambda_o = cfg.lambda_o;
+            obj.lambda_u = cfg.lambda_u;
+            obj.lambda_beta = cfg.lambda_beta;
             obj.lookAhead = cfg.lookAhead;
             obj.q_pos = cfg.q_pos;
             obj.q_vel = cfg.q_vel;
             obj.Hp = cfg.Hp;
             obj.m = cfg.m;
             obj.u_max = cfg.u_max;
-            obj.lambda_a = cfg.lambda_a;
+            obj.lambda_a_plus = cfg.lambda_a_plus;
+            obj.lambda_a_minus = cfg.lambda_a_minus;
             
             % initialize member variables
             obj.T = param.dT;
@@ -89,7 +89,6 @@ classdef HastedtAgent < DoubleIntegratorAgent
             obj.obstacles = param.obstacles;
             obj.num_N = 0;
             obj.numberAgents = param.agentCount;
-            obj.U_opt = nan*zeros(obj.Hp * obj.m * obj.numberAgents,1);
             
             % set reference
             if numel(param.reference) == 0
@@ -124,14 +123,12 @@ classdef HastedtAgent < DoubleIntegratorAgent
         %step Calculate and appy input, send data
         function step(obj)
             obj.neighbors = zeros(obj.numberAgents,1);
-            obj.U_opt = nan*zeros(obj.Hp * obj.m * obj.numberAgents,1);
+            
             % Receive messages from the network
             messages = obj.receive();
             
             % Implement the flocking protocol
             u = zeros(2, 1);
-            obj.U_opt((obj.id-1)*obj.Hp*obj.m + 1:obj.id*obj.Hp * obj.m,1) = zeros(obj.Hp * obj.m,1);
-            
             
             obj.num_N = length(messages);
             x_i = [obj.position; obj.velocity];
@@ -150,10 +147,6 @@ classdef HastedtAgent < DoubleIntegratorAgent
             A_c_e_plus = [];
             A_c_e_minus = [];
             b_c = [];
-            if ~(obj.lambda_a~=1)
-                Hc = 0;
-                fc = 0;
-            end
             if obj.num_N ~= 0
                 for message = messages
                     x_j = [message.data.position; message.data.velocity];
@@ -168,25 +161,20 @@ classdef HastedtAgent < DoubleIntegratorAgent
                 h1 = Jacobi;
                 H0 = kron(ones(obj.Hp,1), h0);
                 H1 = kron(eye(obj.Hp), h1);
-                if ~(obj.lambda_a~=1)
-                    % cost function terms
-                    Hc = (H1*P_u)'*H1*P_u;
-                    fc = xi'*P_x'*(H1'*H1)*P_u + H0'*H1*P_u;
-                else
-                    A_c_u_minus = -H1*P_u;
-                    A_c_u_plus = H1*P_u;
-                    A_c_e_minus = -eye(obj.num_N*obj.Hp);
-                    A_c_e_plus = -eye(obj.num_N*obj.Hp);
-                    b_minus = H0 + H1*P_x*xi;
-                    b_plus = -b_minus;
-                    b_c = [b_minus; b_plus];
-                    Hc = kron(diag([1 obj.lambda_a]),eye(obj.num_N*obj.Hp));
-                    fc = zeros(1,2*obj.num_N*obj.Hp);
-                    lb_c = zeros(2*obj.num_N*obj.Hp,1);
-                    ub_c = inf*ones(2*obj.num_N*obj.Hp,1);
-                end
+                A_c_u_minus = -H1*P_u;
+                A_c_u_plus = H1*P_u;
+                A_c_e_minus = -eye(obj.num_N*obj.Hp);
+                A_c_e_plus = -eye(obj.num_N*obj.Hp);
+                b_minus = H0 + H1*P_x*xi;
+                b_plus = -b_minus;
+                b_c = [b_minus; b_plus];
+                Hc = kron(diag([obj.lambda_a_minus obj.lambda_a_plus]),eye(obj.num_N*obj.Hp));
+                fc = zeros(1,2*obj.num_N*obj.Hp);
+                lb_c = zeros(2*obj.num_N*obj.Hp,1);
+                ub_c = inf*ones(2*obj.num_N*obj.Hp,1);
+                
             end
-                      
+            
             % obstacle avoidance
             Ho = [];
             fo = [];
@@ -215,7 +203,7 @@ classdef HastedtAgent < DoubleIntegratorAgent
                     A_o_u = -H1_o*P_u_o;
                     A_o_e = -eye(obj.num_O*obj.Hp);
                     b_o = H0_o + H1_o*P_x_o*xio;
-                    Ho = obj.lambda_o*eye(obj.num_O*obj.Hp);
+                    Ho = obj.lambda_beta*eye(obj.num_O*obj.Hp);
                     fo = zeros(1,obj.num_O*obj.Hp);
                     lb_o = zeros(obj.num_O*obj.Hp,1);
                     ub_o = inf*ones(obj.num_O*obj.Hp,1);
@@ -246,29 +234,21 @@ classdef HastedtAgent < DoubleIntegratorAgent
             end
             
             % input
-            Hu = obj.lambda*eye(obj.m*obj.Hp*(obj.num_N+1));
+            Hu = obj.lambda_u*eye(obj.m*obj.Hp*(obj.num_N+1));
             fu = zeros(1,length(Hu));
             ub_u = obj.u_max * ones(obj.m*obj.Hp*(obj.num_N+1), 1);
             lb_u = -1*ub_u;
             
             % set up optimization problem
-            if ~(obj.lambda_a~=1)
-                H = blkdiag(Hc + Hu + Hr, Ho);
-                H = (H + H')/2;
-                f = [fc + fr + fu, fo];
-                A = [A_o_u,A_o_e];
-                b = b_o;
-            else
-                H = blkdiag(Hu + Hr, Hc, Ho);
-                H = (H + H')/2;               
-                f = [fr + fu, fc, fo];
-                A = [A_c_u_minus, A_c_e_minus, 0*A_c_e_plus, zeros(size(A_c_u_minus,1),size(A_o_e,2));...
-                    A_c_u_plus, 0*A_c_e_minus, A_c_e_plus, zeros(size(A_c_u_minus,1),size(A_o_e,2))];
-                if obj.num_O~=0
-                    A = [A; A_o_u, zeros(size(A_o_u,1),2*size(A_c_e_plus,2)), A_o_e] ;
-                end
-                b = [b_c; b_o];
+            H = blkdiag(Hu + Hr, Hc, Ho);
+            H = (H + H')/2;
+            f = [fr + fu, fc, fo];
+            A = [A_c_u_minus, A_c_e_minus, 0*A_c_e_plus, zeros(size(A_c_u_minus,1),size(A_o_e,2));...
+                A_c_u_plus, 0*A_c_e_minus, A_c_e_plus, zeros(size(A_c_u_minus,1),size(A_o_e,2))];
+            if obj.num_O~=0
+                A = [A; A_o_u, zeros(size(A_o_u,1),2*size(A_c_e_plus,2)), A_o_e] ;
             end
+            b = [b_c; b_o];
             
             ub = [ub_u; ub_c; ub_o];
             lb = [lb_u; lb_c; lb_o];
@@ -281,9 +261,6 @@ classdef HastedtAgent < DoubleIntegratorAgent
             U = quadprog(H,f,A,b,Aeq,beq,lb,ub,x0,options);
             u = U(1:obj.m);
             
-            % assign the optimal inputs to the corresponding locations in U_opt
-            obj.fillUopt(U(1:obj.Hp*obj.m*(obj.num_N+1)),messages);
-            
             % Evaluate double integrator dynamics
             obj.move(u);
             
@@ -295,7 +272,6 @@ classdef HastedtAgent < DoubleIntegratorAgent
             data.num_N = obj.num_N;
             data.id = obj.id;
             data.neighbors = obj.neighbors;
-            data.U_opt = obj.U_opt;
             obj.send(data)
         end
     end
