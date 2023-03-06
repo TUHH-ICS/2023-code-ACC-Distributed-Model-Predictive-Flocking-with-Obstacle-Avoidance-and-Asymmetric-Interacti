@@ -17,18 +17,29 @@ dataPath = "data/";
 
 % Available Data
 simData = [
-    "hastedt_scenario_1"        % 1
-    "hastedt_scenario_2"        % 2
-    "huang_scenario_1"          % 3
-    "huang_scenario_2"          % 4
-    "olfati-saber_scenario_1"   % 5
-    "olfati-saber_scenario_2"   % 6
+    "hastedt_scenario_1"            % 1
+    "hastedt_scenario_2"            % 2
+    "huang_scenario_1"              % 3
+    "huang_scenario_2"              % 4
+    "olfati-saber_scenario_1"       % 5
+    "olfati-saber_scenario_2"       % 6
     ];
 
-% Select Data to compare by adding the indices from the simData array
-dataSelection = [1,3,5]; % scenario 1 comparison
-% dataSelection = [2,4,6]; % scenario 2 comparison
+% Select the scenario to evaluate by setting the scenarioIndex. More data
+% can be added to the comparison by changing the dataSelection arrays.
 
+% Scenarios
+% 1: Large obstacle
+% 2: Field of small Obstacles
+
+scenarioIndex = 1;
+
+switch (scenarioIndex)
+    case (1)
+        dataSelection = [1,3,5];
+    case (2)
+        dataSelection = [2,4,6];
+end
 %% Comparison/Evaluation
 % Minimum distance variable initialization
 t_distN = {};
@@ -49,35 +60,23 @@ end
 for j=1:length(dataSelection)
     figure()
     load(dataPath+simData(dataSelection(j)));
-    viscircles(param.obstacles(1:2,:)',param.obstacles(3,:),'Color','black', 'LineWidth', 1); hold on;
+    if ~isempty(param.obstacles)
+        viscircles(param.obstacles(1:2,:)',param.obstacles(3,:),'Color','black', 'LineWidth', 1); hold on;
+    end
     for i = 1:size(out.data.position,3)
         plot(out.data.position(:,1,i),out.data.position(:,2,i),'b'); hold on;
     end
+    
     plot(squeeze(out.data.position(1,1,:)),squeeze(out.data.position(1,2,:)),'kx','MarkerSize',10,'LineWidth',1); hold on;
     plot(squeeze(out.data.position(end,1,:)),squeeze(out.data.position(end,2,:)),'kx','MarkerSize',10,'LineWidth',1); hold on;
     title("Agent Trajectories "+ replace(erase(simData(dataSelection(j)),".mat"),"_","\_"));
     xlabel('x');
     ylabel('y');
-    xlim([-5 100]);
-    ylim([-5 100]);
+    if (scenarioIndex ~=3)
+        xlim([-5 100]);
+        ylim([-5 100]);
+    end
 end
-
-%% Minimum distances
-figure()
-for i = 1:size(distN,2)
-    plot(t_distN{i},distN{i}, 'DisplayName',replace(erase(simData(dataSelection(i)),".mat"),"_","\_")+" q_{ij}");
-    hold on;
-    plot(t_distO{i},distO{i}, '--','DisplayName',replace(erase(simData(dataSelection(i)),".mat"),"_","\_")+" q_{io}");
-    hold on;
-end
-xlim([0,400])
-ylim([0,8.4])
-grid on;
-title('Minimum inter-agent and agent-obstacle distances')
-xlabel('time in s');
-ylabel('distance');
-legend show;
-legend('Location','southeast');
 
 %% Input Comparison
 names = {};
@@ -90,6 +89,24 @@ figure()
 bar(1:i,u_rms);
 set(gca, 'XTick', 1:length(names),'XTickLabel',names);
 title('RMS Input Values')
+
+%% Minimum distances
+figure()
+for i = 1:size(distN,2)
+    tmax = t_distN{i}(end);
+    plot(t_distN{i},distN{i}, 'DisplayName',replace(erase(simData(dataSelection(i)),".mat"),"_","\_")+" q_{ij}");
+    hold on;
+    plot(t_distO{i},distO{i}, '--','DisplayName',replace(erase(simData(dataSelection(i)),".mat"),"_","\_")+" q_{io}");
+    hold on;
+end
+xlim([0,tmax])
+ylim([0,8.4])
+grid on;
+title('Minimum inter-agent and agent-obstacle distances')
+xlabel('time in s');
+ylabel('distance');
+legend show;
+legend('Location','southeast');
 
 %% Minimum Obstacle Distance Comparison
 names = {};
@@ -127,6 +144,3 @@ figure()
 bar(1:i,clearanceTime);
 set(gca, 'XTick', 1:length(names),'XTickLabel',names);
 title('Obstacle Clearance Time')
-
-%% Potential Comparison
-plotPotentials()

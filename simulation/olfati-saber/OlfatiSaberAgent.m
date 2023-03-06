@@ -77,10 +77,10 @@ classdef OlfatiSaberAgent < DoubleIntegratorAgent
             
             obj.c1a = cfg.c1a;
             obj.c2a = cfg.c2a;
-            obj.c1b = cfg.c1a;
-            obj.c2b = cfg.c2a;
-            obj.c1g = cfg.c1a;
-            obj.c2g = cfg.c2a;
+            obj.c1b = cfg.c1b;
+            obj.c2b = cfg.c2b;
+            obj.c1g = cfg.c1g;
+            obj.c2g = cfg.c2g;
             obj.pot_a = cfg.pot_a;
             obj.pot_b = cfg.pot_b;
             obj.u_max = cfg.u_max;
